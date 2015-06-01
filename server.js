@@ -15,7 +15,6 @@ var server = http.createServer(function(req, res) {
   console.log('Sirviendo imagen n°'+(base+(count%frms))+'.');
   count = count + 1;
 });
-
 server.listen(8080, function() {
   console.log('Serving latest png on port 8080 ...');
 });
