@@ -1,40 +1,35 @@
-//enviar frames con el drone y servirlos en localhost:8080
-var http    = require('http');
 var arDrone = require('ar-drone');
+var http    = require('http');
 var cl = arDrone.createClient();
 var pngStream = arDrone.createClient().getPngStream();
-var count = 0;
+
+console.log('Conectar stream png ...');
+
 var lastPng;
-
-console.log('Conectando stream...');
-
-cl.takeoff();
-cl.stop();
-
 pngStream
   .on('error', console.log)
   .on('data', function(pngBuffer) {
     lastPng = pngBuffer;
-    count = count+1;
-    if(count%100==0)
-    	console.log(count);
   });
-  
-pngStream._frameRate = 15;
-pngStream._imageSize = "640x480";
 
 var server = http.createServer(function(req, res) {
   if (!lastPng) {
     res.writeHead(503);
-    res.end('Esperate un cachito y aplica f5');
+    res.end('No se ha recibido frames aun.');
     return;
   }
-
+  if (req.url == "/takeoff"){
+  	cl.takeoff();
+  	cl.stop();
+  }
+  else if(req.url == "/land"){
+  	cl.land();
+  }
   res.writeHead(200, {'Content-Type': 'image/png'});
+  res.writeContinue();
   res.end(lastPng);
 });
 
 server.listen(8080, function() {
-  console.log('Sirviendo...');
+  console.log('Sirviendo frames.');
 });
-
