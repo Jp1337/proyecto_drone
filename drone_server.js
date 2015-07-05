@@ -6,7 +6,7 @@ var pngStream = arDrone.createClient().getPngStream();
 console.log('Conectar stream png ...');
 
 pngStream._frameRate = 12;
-pngStream._imageSize = "960x544";
+pngStream._imageSize = "883x500";//"960x544";
 
 var lastPng;
 pngStream
