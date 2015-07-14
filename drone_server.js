@@ -16,23 +16,50 @@ pngStream
   });
 
 var server = http.createServer(function(req, res) {
-  if (!lastPng) {
-    res.writeHead(503);
-    res.end('No se ha recibido frames aun.');
-    return;
+  console.log(req.url);
+  if(req.url == "/"){
+  	if (lastPng){
+	  	res.writeHead(200, {'Content-Type': 'image/png'});
+  		res.end(lastPng);
+  		return;
+  	}
+  	else res.end('No se ha recibido frames aun.');
+  	return;
   }
-  if (req.url == "/takeoff"){
-  	cl.takeoff();
+  else if (req.url == "/hold"){
   	cl.stop();
   }
   else if(req.url == "/land"){
   	cl.land();
   }
-  res.writeHead(200, {'Content-Type': 'image/png'});
-  res.writeContinue();
-  res.end(lastPng);
+  else if(req.url == "/vuelta_der"){
+	cl.after(150, function() { this.clockwise(0.2); } );
+  }
+  else if(req.url == "/vuelta_izq"){
+	cl.after(150, function() { this.counterClockwise(0.2); } );
+  }  
+  else if(req.url == "/sube"){
+	cl.after(150, function() { this.up(0.2); } );
+  }
+  else if(req.url == "/baja"){
+	cl.after(150, function() { this.down(0.2); } );
+  }
+  else if(req.url == "/no_spin"){
+	cl.counterClockwise(0);
+  }
+  else if(req.url == "/no_updn"){
+	cl.up(0);
+  }
+  else if (req.url == "/takeoff"){
+  	cl.takeoff();
+  	cl.after(250, function() { this.stop(); } );
+  }
+  res.end();
+  return;
 });
 
 server.listen(8080, function() {
   console.log('Sirviendo frames.');
 });
+
+

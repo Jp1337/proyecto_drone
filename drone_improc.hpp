@@ -1,3 +1,9 @@
+/** @file	drone_improc.cpp
+*	@brief	Libreria de funciones para el reconocimiento del objeto
+*	@author	Juan Pablo Alvarez
+*	@author	Renato Aguilar
+*/
+
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
@@ -13,7 +19,16 @@ using namespace std;
 
 namespace iproc{
 	
+	bool found = false;
+	int cx, cy;
+	
 	// Public-domain function by Darel Rex Finley, 2006.
+	/**
+	 * @brief Función para calcular el área de un poligono dados sus vertices
+	 * @param X Coordenadas en eje 'x' de los vertices
+	 * @param Y Coordenadas en eje 'y' de los vertices
+	 * @param points Cantidad de vertices
+	 */
 	double polygonArea(double *X, double *Y, int points) {
 		double  area=0. ;
 		int i, j=points-1  ;
@@ -22,19 +37,43 @@ namespace iproc{
 			}
 		return area*.5; 
 	};
-
-	void detectFeatures(Mat &img, vector<KeyPoint> &kpts, int lvls = 4, int cuantos = 500) {
-	  OrbFeatureDetector detector(cuantos, 1.2f, lvls, 10, 0, 4, ORB::HARRIS_SCORE, 6);
+	
+	/**
+	 * @brief Detecta y almacena los keypoints de una imagen con el detector de ORB (FAST + piramide)
+	 * @param img Imagen a procesar
+	 * @param kpts Vector en el que se almacenaran los keypoints
+	 * @param lvls Niveles que se usaran en la piramide
+	 * @param cuantos Maximo de kpts a encontrar
+	 */
+	void detectFeatures(Mat &img, vector<KeyPoint> &kpts, int lvls = 16, int cuantos = 500) {
+	  OrbFeatureDetector detector(cuantos, 1.1f, lvls, 6, 0, 4, ORB::HARRIS_SCORE, 2);
 	  detector.detect(img, kpts);
 	};
-
+	
+	/**
+	 * @brief funcion que calcula y almacena los descriptores en base a los keypoints utilizando FREAK
+	 * @param img Imagen a procesar
+	 * @param kpts Vector que contiene los keypoints
+	 * @param descriptors Matriz que almacenara los descriptores
+	 */
 	void extractFeatures(Mat &img, vector<KeyPoint> &kpts, Mat &descriptors){
 	  FREAK extractor;
 	  extractor.compute( img, kpts, descriptors );
 	}
-
-	Mat matchFeatures(Mat img_objeto, vector<KeyPoint> keypoints_objeto, Mat descriptor_objeto, Mat img_escena, bool debug = true){
-
+	
+	/**
+	 * @brief Realiza el pareo de features entre la imagen y la escena, grafica los keypoints de la escena, 
+	 estima la mejor homografia entre los features del objeto y los de la escena, 
+	 aplica dicha transformación a las esquinas y centroide del objeto, dibuja esto en la imagen de salida y
+	 retorna dicha matriz. Su ejecución puede cambiar el flag "found" y las coordenadas del centroide.
+	 * @param img_objeto Imagen del objeto (si, sabemos que esta de mas y se puede ahorrar esta parte).
+	 * @param keypoints_objeto Los keypoints del objeto.
+	 * @param descriptor_objeto Matriz que contiene los descriptores del objeto.
+	 * @param img_escena Imagen de la escena a procesar.
+	 * @param debug Flag que determinar si se imprime output de debugging o no.
+	 */
+	Mat matchFeatures(Mat img_objeto, vector<KeyPoint> keypoints_objeto, Mat descriptor_objeto, Mat img_escena, bool debug = 0){
+		found = false;
 		vector<KeyPoint> keypoints_escena;
 		vector<DMatch> matches, good_matches;
 		Mat descriptor_escena, imgMatch;
@@ -43,27 +82,22 @@ namespace iproc{
     	double max_dist = 0; 
 	    double min_dist = 100;
     	double avg_dist = 0, g_avg_dist = 0;    
-	    double factor_tolerancia = 0.85;
+	    double factor_tolerancia = 10;
+	    double ratio_aprox = 0;
+    	cx=-100; cy=-100;
     
-		// Detección
 		if(debug) { t_1 = (double)getTickCount(); }
-		detectFeatures(img_escena,keypoints_escena,16,1000);
+		detectFeatures(img_escena,keypoints_escena,20,800);
 		if(debug) { t_1 = ((double)getTickCount() - t_1)/getTickFrequency(); }
 
-		// Extracción
 		if(debug) { t_2 = (double)getTickCount(); }   
 		extractFeatures(img_escena,keypoints_escena,descriptor_escena);
 		if(debug) { t_2 = ((double)getTickCount() - t_2)/getTickFrequency(); }
 
-
-		// Debe existir un descriptor valido de la escena para continuar
 		if(!descriptor_escena.empty()){
 
-		  int ij = clock();
-		  // Matching
 		  matcher.match(descriptor_objeto, descriptor_escena, matches);
-		  cout << "MATCHES! " << matches.size() << endl;
-		  // Eliminar outliers calculando distancia entre keypoints
+		  
 		  for( int i = 0; i < descriptor_objeto.rows; i++ ){ 
 		  double dist = matches[i].distance;
 		  if( dist < min_dist ) min_dist = dist;
@@ -71,10 +105,8 @@ namespace iproc{
 		  avg_dist += dist;
 		  }
 		  avg_dist /= descriptor_objeto.rows;
-		  sort(matches.begin(),matches.end());	//nos quedaremos con el mejor tercio
-		  cout << "asdf: " << (double)(clock()-ij)/CLOCKS_PER_SEC << endl;
+		  sort(matches.begin(),matches.end());
 		  
-		  // Guardar el primer tercio ordenado x distancia
 		  for( int i = 0; i < matches.size()/3; i++ ) { 
 		  g_avg_dist += matches[i].distance;
 		  good_matches.push_back(matches[i]);
@@ -90,13 +122,8 @@ namespace iproc{
 		  }
 
       drawKeypoints(img_escena,keypoints_escena,imgMatch,Scalar::all(-1), DrawMatchesFlags::DEFAULT);
-      //drawMatches(img_objeto, keypoints_objeto, img_escena, keypoints_escena, 
-      //            good_matches, imgMatch, Scalar::all(-1), Scalar::all(-1),
-      //             vector<char>(), 0);
 
-      /// Primer filtro basado en matches
-      /// Si hay un porcentaje de matches, entonces calcular homography
-      if(g_avg_dist < 85){
+      if(g_avg_dist < 95){
         Mat H;
         if(debug) { t_3 = (double)getTickCount(); }
         H = findHomography(objeto,escena,CV_RANSAC,9);
@@ -104,14 +131,18 @@ namespace iproc{
 		    t_3 = ((double)getTickCount() - t_3)/getTickFrequency();
 		    cout << "Tiempos     [Det/Ext/Hmg] " << t_1 << " " << t_2 << " " << t_3 << endl; 
 		}
-        vector<Point2f> obj_corners(4);
+        vector<Point2f> obj_corners(5);
         obj_corners[0] = cvPoint(0,0); 
         obj_corners[1] = cvPoint(img_objeto.cols,0);
         obj_corners[2] = cvPoint(img_objeto.cols,img_objeto.rows); 
         obj_corners[3] = cvPoint(0,img_objeto.rows);
-        vector<Point2f> scene_corners(4);
+        obj_corners[4] = cvPoint(img_objeto.cols/2,img_objeto.rows/2);
+        vector<Point2f> scene_corners(5);
         perspectiveTransform(obj_corners,scene_corners,H);
-    
+        //Mat v(3,1,H.type());
+        //v.at<double>(0) = obj_corners[4].x; v.at<double>(1) = obj_corners[4].y; v.at<double>(2) = 1;
+        //Mat hv = H*v;
+    	//cout << v.at<double>(0)/hv.at<double>(0) << ", " << v.at<double>(1)/hv.at<double>(1) << " " << v.at<double>(2)/hv.at<double>(2) << endl << endl;
         double object_x[4];
         double object_y[4];
         double scene_x[4];
@@ -121,10 +152,7 @@ namespace iproc{
           // Recuadro azul
           n = i+1;
           if(i==3){ n = 0; }
-          //line( imgMatch, scene_corners[i] + Point2f( img_objeto.cols, 0), scene_corners[n] + Point2f( img_objeto.cols, 0), Scalar(255, 0, 0), 6 );
           line( imgMatch, scene_corners[i], scene_corners[n], Scalar(255, 0, 0), 6 );
-
-          // Descomposición de esquinas para evaluar área
           object_x[i] = obj_corners[i].x;
           object_y[i] = obj_corners[i].y;
           scene_x[i] = scene_corners[i].x;
@@ -134,29 +162,33 @@ namespace iproc{
         double area_objeto = abs(polygonArea(object_x,object_y,4));
         double area_objeto_detectado = abs(polygonArea(scene_x,scene_y,4));
         if(debug) { cout << "Area        [Obj/Detect]  " << area_objeto << " " << area_objeto_detectado << endl; }
-        double tolerance = area_objeto * pow(factor_tolerancia,2);
-        double area_min_aceptado = area_objeto - tolerance;
-        double area_max_aceptado = area_objeto + tolerance;
+        double area_min_aceptado = area_objeto / factor_tolerancia;
+        double area_max_aceptado = area_objeto * factor_tolerancia;
         
-        if ( !(area_min_aceptado < area_objeto_detectado && area_objeto_detectado < area_max_aceptado)){
+        if ( area_min_aceptado > area_objeto_detectado ){
           if(debug) { 
-          cout << "[No Detectado] " << endl << endl; 
+          cout << "[No Detectado] a_o:" << area_objeto_detectado << " a_min:" << area_min_aceptado << " ; " << (area_min_aceptado>area_objeto_detectado) << endl; 
           }
         } else{
-          cout << "[ DETECTADO  ] " << endl << endl;
+          if(debug) {
+          cout << "[ DETECTADO  ] " << endl;
+          }
+          found = true;
+          cx=scene_corners[4].x ; cy=scene_corners[4].y; 
+          circle( imgMatch, Point(cx,cy), 7, Scalar(0,0,255), -1);
         }
 
       }
-      else {	//si no vale la pena intentar homography
+      else {
         if(debug) { 
-          cout << "[Bajo threshold] " << endl << endl; 
+          cout << "[Bajo threshold] " << endl; 
         }
       }
-      } else {	//si el descriptor esta vacio
-        drawMatches(img_objeto, keypoints_objeto, img_escena, keypoints_escena, 
-            good_matches, imgMatch, Scalar::all(-1), Scalar::all(-1),
-            vector<char>(), 4);
-            cout << "[SIN DESCRIPTOR]" << endl << endl;
+      } else {
+      	drawKeypoints(img_escena, keypoints_escena, imgMatch, Scalar::all(-1), DrawMatchesFlags::DEFAULT);
+            if( debug ){
+            cout << "[SIN DESCRIPTOR]" << endl;
+            }
       }
       return imgMatch;
 	}
