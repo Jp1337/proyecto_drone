@@ -35,6 +35,7 @@ namespace dcom{
 			request.perform();
 			tmp = bin_data.str();
 			bin_frame.assign(tmp.c_str(), tmp.c_str()+tmp.size());
+			//std::cout << "bytes procesados: " << bin_frame.size() << " , ";
 			return &bin_frame;
 		}
 		catch ( curlpp::LogicError & e ) {

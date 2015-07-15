@@ -4,7 +4,11 @@
 *	@author	Renato Aguilar
 */
 
+//nota: para la cámara, a 20cm de distancia, 9.5 cm son aprox. 373px
+//cachando... como 40px por cm de plano, a 20cm del lente...
+
 #include <opencv2/core/core.hpp>
+#include <cmath>
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/features2d/features2d.hpp>
@@ -20,7 +24,8 @@ using namespace std;
 namespace iproc{
 	
 	bool found = false;
-	int cx, cy;
+	int cx, cy;	//centroide
+	double m[4]; //pendientes
 	
 	// Public-domain function by Darel Rex Finley, 2006.
 	/**
@@ -46,7 +51,7 @@ namespace iproc{
 	 * @param cuantos Maximo de kpts a encontrar
 	 */
 	void detectFeatures(Mat &img, vector<KeyPoint> &kpts, int lvls = 16, int cuantos = 500) {
-	  OrbFeatureDetector detector(cuantos, 1.1f, lvls, 6, 0, 4, ORB::HARRIS_SCORE, 2);
+	  OrbFeatureDetector detector(cuantos, 1.1f, lvls, 4, 0, 4, ORB::HARRIS_SCORE, 3);
 	  detector.detect(img, kpts);
 	};
 	
@@ -72,7 +77,7 @@ namespace iproc{
 	 * @param img_escena Imagen de la escena a procesar.
 	 * @param debug Flag que determinar si se imprime output de debugging o no.
 	 */
-	Mat matchFeatures(Mat img_objeto, vector<KeyPoint> keypoints_objeto, Mat descriptor_objeto, Mat img_escena, bool debug = 0){
+	Mat matchFeatures(Mat img_objeto, vector<KeyPoint> keypoints_objeto, Mat descriptor_objeto, Mat img_escena, bool debug = 1){
 		found = false;
 		vector<KeyPoint> keypoints_escena;
 		vector<DMatch> matches, good_matches;
@@ -84,10 +89,10 @@ namespace iproc{
     	double avg_dist = 0, g_avg_dist = 0;    
 	    double factor_tolerancia = 10;
 	    double ratio_aprox = 0;
-    	cx=-100; cy=-100;
-    
+    	cx=cy=-100;
+    	    	    
 		if(debug) { t_1 = (double)getTickCount(); }
-		detectFeatures(img_escena,keypoints_escena,20,800);
+		detectFeatures(img_escena,keypoints_escena,20,1000);
 		if(debug) { t_1 = ((double)getTickCount() - t_1)/getTickFrequency(); }
 
 		if(debug) { t_2 = (double)getTickCount(); }   
@@ -139,10 +144,7 @@ namespace iproc{
         obj_corners[4] = cvPoint(img_objeto.cols/2,img_objeto.rows/2);
         vector<Point2f> scene_corners(5);
         perspectiveTransform(obj_corners,scene_corners,H);
-        //Mat v(3,1,H.type());
-        //v.at<double>(0) = obj_corners[4].x; v.at<double>(1) = obj_corners[4].y; v.at<double>(2) = 1;
-        //Mat hv = H*v;
-    	//cout << v.at<double>(0)/hv.at<double>(0) << ", " << v.at<double>(1)/hv.at<double>(1) << " " << v.at<double>(2)/hv.at<double>(2) << endl << endl;
+
         double object_x[4];
         double object_y[4];
         double scene_x[4];
@@ -157,7 +159,10 @@ namespace iproc{
           object_y[i] = obj_corners[i].y;
           scene_x[i] = scene_corners[i].x;
           scene_y[i] = scene_corners[i].y;
+          if(scene_corners[i].x == scene_corners[n].x) m[i] = 2000;	// "infinito"
+          else m[i] = (double)(scene_corners[n].y-scene_corners[i].y)/(scene_corners[n].x-scene_corners[i].x);
         }
+        if(debug){cout << "Pendientes: m01=" << m[0] << "  m12=" << m[1] << "  m23=" << m[2] << "  m30=" << m[3] << endl;}
 
         double area_objeto = abs(polygonArea(object_x,object_y,4));
         double area_objeto_detectado = abs(polygonArea(scene_x,scene_y,4));

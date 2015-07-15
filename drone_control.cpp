@@ -67,8 +67,8 @@ void focus(){
 
 int main(int argc, char *argv[]){
 
-  if(argc != 3) {
-    std::cerr << "Uso" << argv[0] << " direccion:puerto /ruta/foto.png" << std::endl;
+  if(argc != 4) {
+    std::cerr << "Uso" << argv[0] << " direccion:puerto /ruta/foto.png stbl|find" << std::endl;
     return EXIT_FAILURE;
   }
   sample = imread(argv[2], CV_LOAD_IMAGE_GRAYSCALE );
@@ -83,14 +83,18 @@ int main(int argc, char *argv[]){
   iproc::extractFeatures(sample,feats,descr);  
   //dcom::tell("takeoff");
   //dcom::tell("hold");
-  //waitKey(4000);
-  //dcom::tell("vuelta_der");	
+  waitKey(4000);
+  dcom::tell("vuelta_der");
+  
+//  if(argv[3] == stbl){}
 
   	while(kstroke!=32){ 
-  	
+  		
+  		//int t = clock();
 		imdecode(*dcom::getFrame(),IMTYPE,&frame);
 		imshow("Frame", iproc::matchFeatures(sample,feats,descr,frame));
-
+		//cout << "en: " << double(clock()-t)/CLOCKS_PER_SEC << " seg." << endl;
+		
 		if( iproc::found ) cont++;
 		else cont = 0;
 		if(cont >= esta_seguro){
